@@ -59,7 +59,9 @@ void fswalker::scan(const std::filesystem::path &root_path) {
         if (fs::exists(root_path))
             process(root_path);
         else
-            error(std::system_error(std::make_error_code(std::errc::no_such_file_or_directory)), root_path);
+            error(std::system_error(std::make_error_code(
+                      std::errc::no_such_file_or_directory)),
+                  root_path);
         return;
     }
     scan_ctx ctx;

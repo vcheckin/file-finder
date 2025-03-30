@@ -11,9 +11,8 @@ namespace utils {
 /// anything on exit_fd unblocks the stream
 class interruptible_buf : public std::streambuf {
 public:
-    interruptible_buf(int read_fd, int exit_fd)
-        : read_fd_(read_fd)
-        , signal_fd_(exit_fd) {
+    interruptible_buf(int read_fd, int exit_fd) :
+        read_fd_(read_fd), signal_fd_(exit_fd) {
         setg(buffer_, buffer_, buffer_);
     }
 
@@ -72,17 +71,6 @@ private:
     int pipe_fd[2];
 };
 
-class defer final {
-    using cb_t = std::function<void()>;
-    cb_t cb;
-public:
-    defer(cb_t c)
-        : cb(std::move(c)) {
-    }
-    ~defer() {
-        cb();
-    }
-};
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, const std::tuple<Ts...> &tuple) {

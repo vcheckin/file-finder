@@ -6,18 +6,21 @@
 #include "chan.h"
 #include "util.h"
 namespace {
+constexpr auto fancy_output = true;
 struct scan_context {
-    // filename, full path
-    using input_type =
-        std::tuple<std::string, std::filesystem::path>;
-    // full path, matched string
-    using result_type =
-        std::tuple<std::string, std::string>;
+    // [filename, full path] sent from fs scan to matchers
+    using input_type = std::tuple<std::string, std::filesystem::path>;
+    // [full path, matched string] from matcher to output container
+    using result_type = std::tuple<std::string, std::string>;
+    /// notify the pipeline that stop is requsted
     void signal_stop();
+    /// notify the pipeline that fs scan is complete
     void signal_complete();
+    /// user requested immediate dump
     void signal_dump() {
         dump_cv.notify_all();
     }
+    /// dump the currently accumulated results
     void dump();
     template <typename... Rs> void add(Rs &&...res) {
         std::scoped_lock l(result_lock);
@@ -55,12 +58,12 @@ void scan_context::signal_complete() {
         (void)::write(ui_thr_control.write_fd(), "1", 1);
     }
 }
-void print_w_highlight(const std::string& str, const std::string& sub) {
+void print_w_highlight(const std::string &str, const std::string &sub) {
     auto base = str.find_last_of(std::filesystem::path::preferred_separator);
     base = base == std::string::npos ? 0 : base + 1;
     std::cout << str.substr(0, base);
     auto pos = base;
-    for(auto pos = base; pos < str.size();) {
+    for (auto pos = base; pos < str.size();) {
         auto m = str.find(sub, pos);
         if (m == std::string::npos) {
             std::cout << str.substr(pos);
@@ -82,7 +85,7 @@ void scan_context::dump() {
     for (const auto &s : r) {
         auto &path = std::get<0>(s);
         auto &sub = std::get<1>(s);
-        if(0 && isatty(STDOUT_FILENO) && !sub.empty()) {
+        if (fancy_output && isatty(STDOUT_FILENO) && !sub.empty()) {
             print_w_highlight(path, sub);
         } else
             std::cout << path << "\n";
@@ -94,7 +97,7 @@ void scan_context::ui_worker() {
     std::istream input(&buf);
     while (stopf == stop_type::running) {
         std::string cmd;
-        if(!std::getline(input, cmd))
+        if (!std::getline(input, cmd))
             break;
         if (cmd == "dump") {
             signal_dump();
@@ -116,8 +119,7 @@ void scan_context::dump_worker() {
 
 struct walker : public fswalker {
     scan_context &ctx;
-    explicit walker(scan_context &c)
-        : ctx(c) {
+    explicit walker(scan_context &c) : ctx(c) {
     }
     void process(const std::filesystem::path &p) override {
         ctx.chan.send(std::make_tuple(p.filename(), p));
@@ -137,13 +139,13 @@ void scan(const std::string &root, std::vector<std::string> &subs) {
 
     std::vector<std::thread> matchers;
     for (auto &sub : subs) {
-        matchers.emplace_back([&, s = std::move(sub)] {
-            ctx.chan.receiver([&](auto &&obj) {
+        auto rcv =
+            ctx.chan.create_receiver([&ctx, s = std::move(sub)](auto &&obj) {
                 auto &fn = std::get<0>(obj);
                 if (fn.find(s) != std::string::npos)
                     ctx.add(std::get<1>(obj), s);
             });
-        });
+        matchers.emplace_back([rcv]() { rcv->run(); });
     }
     auto ui_thr = std::thread([&]() { ctx.ui_worker(); });
     auto dump_thr = std::thread([&]() { ctx.dump_worker(); });
@@ -160,9 +162,8 @@ void scan(const std::string &root, std::vector<std::string> &subs) {
 }
 
 void usage(int argc, const char *argv[]) {
-    std::cout
-        << "Usage: " << ((argc > 0 && argv[0]) ? argv[0] : "file-finder")
-        << " <dir> <substring1>[<substring2> [<substring3>]...]\n";
+    std::cout << "Usage: " << ((argc > 0 && argv[0]) ? argv[0] : "file-finder")
+              << " <dir> <substring1> [<substring2> [<substring3>...]]\n";
 }
 } // end anon namespace
 

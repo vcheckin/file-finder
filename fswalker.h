@@ -9,12 +9,18 @@
 class fswalker {
 public:
     virtual ~fswalker() = default;
-    /// callback for scan
-    virtual void process(const std::filesystem::path&) = 0;
-    virtual void error(const std::exception&, const std::filesystem::path&){}
-    virtual bool is_stopped() {return false;}
+    /// this function is called by scan() for each filesystem object
+    virtual void process(const std::filesystem::path &) = 0;
+    /// called by scan() on error
+    virtual void error(const std::exception &, const std::filesystem::path &) {
+    }
+    /// called by scan() after every object, scan it terminated if this returns true
+    virtual bool is_stopped() {
+        return false;
+    }
     /// walk the directory tree from root_path calling `process()` for each path
-    void scan(const std::filesystem::path& root_path);
+    void scan(const std::filesystem::path &root_path);
+
 protected:
     // optional resource limits (approximate)
     size_t memory_limit = 0;
